@@ -1,9 +1,7 @@
 # Madek ZHDK ZAPI Sync
 
-Fetches people from ZAPI and inserts them into the `people` table.
+Fetches people from ZAPI and pushes them to Madek API V2.
 
 ## Usage
 
-Find out with: 
-
-`clojure -M -m madek.zapi-sync.core --help`
+Run `$ clojure -M -m madek.zapi-sync.core --help` to get more info

@@ -1,37 +1,9 @@
 (ns madek.zapi-sync.core
   (:require [madek.zapi-sync.people :as people]
+            [madek.zapi-sync.study-classes :as study-classes]
             [clojure.pprint :refer [pprint]]
             [clojure.string :refer [join]]
-            [clj-http.client :as http-client]
-            [clojure.tools.cli :as cli]
-            [cheshire.core :as json]))
-
-(defn fetch
-  [url username]
-  (println "fetching " url)
-  (let [response (http-client/get url {:as :json :basic-auth [username ""]})]
-    (:body response)))
-
-(defn fetch-study-class-name [url zapi-username]
-  (let [data (fetch (str url "?"
-                         (http-client/generate-query-string
-                          {:fieldsets (join "," ["basic"])}))
-                    zapi-username)]
-    (-> data :data first :basic :number)))
-
-(defn fetch-person
-  [person-id allow-non-zhdk zapi-url zapi-username]
-  (let [url (str zapi-url
-                 "person/" person-id "?"
-                 (http-client/generate-query-string
-                  (-> {:fieldsets (join "," ["default" "basic" "affiliation" "study_base" "study_class"])}
-                      (#(if allow-non-zhdk % (assoc % :only_zhdk true))))))
-        data (fetch url zapi-username)
-        person (-> data :data first)
-        institutional-directory-infos (people/get-institutional-infos person #(fetch-study-class-name % zapi-username))
-        basic-data (people/get-basic-data person)]
-    (println "Person ID:" (basic-data :id) "Name:" (str (-> basic-data :last-name) ", " (-> basic-data :first-name)))
-    (println (json/generate-string institutional-directory-infos {:pretty true}))))
+            [clojure.tools.cli :as cli]))
 
 (defn usage [options-summary & more]
   (->> ["Madek ZHdK ZAPI Sync"
@@ -49,43 +21,59 @@
            "-------------------------------------------------------------------"])]
        flatten (join \newline)))
 
-(def cli-options
+(def cli-option-specs
   [["-h" "--help"]
    [nil "--zapi-url ZAPI_URL" "Defaults to env var `ZAPI_URL`"]
    [nil "--zapi-username ZAPI_USERNAME" "Defaults to env var `ZAPI_USERNAME`"]
-   [nil "--get-person PERSON_ID" "Just get a single person by id"]
-   [nil "--allow-non-zhdk" "Omit the `only-zhdk` filter (requires special permission in ZAPI!)"]])
+   [nil "--get-person PERSON_ID" "Get and print a single person by id"]
+   [nil "--get-people" "Get and print a list of people"]
+   [nil "--get-study-classes" "Get and print a list of study-classes"]
+   [nil "--with-non-zhdk" "Omit the `only-zhdk` filter (requires special permission in ZAPI!)"]])
+
+(defn- get-zapi-config [options]
+  (let [zapi-url (or (:zapi-url options) (System/getenv "ZAPI_URL"))
+        zapi-username (or (:zapi-username options) (System/getenv "ZAPI_USERNAME"))]
+    (cond (nil? zapi-url)
+          (throw (Exception. "ZAPI_URL not found in options or env"))
+          (nil? zapi-username)
+          (throw (Exception. "ZAPI_USERNAME not found in options or env"))
+          :else
+          {:base-url zapi-url
+           :username zapi-username})))
+
+(defn- print-person [person]
+  (println "Person ID:" (-> person :id) "| Name:" (str (-> person :last-name) ", " (-> person :first-name)) "| Infos: " (->> person :institutional-directory-infos (join ", "))))
+
+(defn- print-study-class [[link name]]
+  (println "Link:" link "| Name:" name))
 
 (defn run [options]
-  (let [zapi-url (or (:zapi-url options) (System/getenv "ZAPI_URL"))
-        zapi-username (or (:zapi-username options) (System/getenv "ZAPI_USERNAME"))
+  (let [zapi-config  (get-zapi-config options)
         get-person-id (:get-person options)
-        allow-non-zhdk (:allow-non-zhdk options)]
-    (cond (nil? zapi-url)
-          (println "ZAPI_URL missing. Check usage.")
-          (nil? zapi-username)
-          (println "ZAPI_USERNAME missing. Check usage.")
-          get-person-id
-          (fetch-person get-person-id allow-non-zhdk zapi-url zapi-username)
+        get-people (:get-people options)
+        with-non-zhdk (:with-non-zhdk options)
+        get-study-classes (:get-study-classes options)]
+    (cond get-person-id
+          (let [person (people/fetch-person zapi-config get-person-id with-non-zhdk)]
+            (print-person person))
+          get-people
+          (->> (people/fetch-people zapi-config with-non-zhdk) (map print-person) doall)
+          get-study-classes
+          (->> (study-classes/fetch-study-classes-map zapi-config) (map print-study-class) doall)
           :else
-          (println "No instruction from CLI options. Check usage."))))
+          (println "Check usage (--help)"))))
 
 (defn -main [& args]
-  (let [{:keys [options arguments errors summary]}
-        (cli/parse-opts args cli-options :in-order true)]
-    (cond
-      (:help options)
-      (println (usage summary {:options options :arguments arguments :errors errors}))
-      :else
-      (run options))))
-
-
-(comment
-  ;; format as SQL (for debugging only)
-  (defn psql-escape [s]
-    (clojure.string/escape s {"'" "''"}))
-
-  (defn generate-sql-update [person-id institutional-directory-infos]
-    (str "UPDATE people SET institutional_directory_infos = ARRAY["
-         (join "," (map #(str "'" (psql-escape %) "'") institutional-directory-infos))
-         "] WHERE institutional_id = '" (psql-escape person-id) "';")))
+  (try
+    (let [{:keys [options arguments errors summary]}
+          (cli/parse-opts args cli-option-specs :in-order true)]
+      (cond
+        (:help options)
+        (println (usage summary {:options options :arguments arguments :errors errors}))
+        :else
+        (run options))
+      (System/exit 0))
+    (catch Exception e
+      (do
+        (println e)
+        (System/exit -1)))))

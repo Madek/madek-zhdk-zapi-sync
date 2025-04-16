@@ -1,1 +1,0 @@
-(ns madek.zapi-sync.study-class)
