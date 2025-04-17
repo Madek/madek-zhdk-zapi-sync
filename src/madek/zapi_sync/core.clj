@@ -25,10 +25,13 @@
   [["-h" "--help"]
    [nil "--zapi-url ZAPI_URL" "Defaults to env var `ZAPI_URL`"]
    [nil "--zapi-username ZAPI_USERNAME" "Defaults to env var `ZAPI_USERNAME`"]
-   [nil "--get-person PERSON_ID" "Get and print a single person by id"]
+
    [nil "--get-people" "Get and print a list of people"]
+   [nil "--person-ids PERSON_IDS" "Option to use with --get-people. Filters by comma-separated list of ids"]
+   [nil "--with-non-zhdk" "Option to use with --get-people. Omit the `only-zhdk` filter (requires special permission in ZAPI!)"]
+
    [nil "--get-study-classes" "Get and print a list of study-classes"]
-   [nil "--with-non-zhdk" "Omit the `only-zhdk` filter (requires special permission in ZAPI!)"]])
+   [nil "--study-class-ids STUDY_CLASS_IDS" "Option to use with --get-study-classes Filters by comma-separated list of ids"]])
 
 (defn- get-zapi-config [options]
   (let [zapi-url (or (:zapi-url options) (System/getenv "ZAPI_URL"))
@@ -41,27 +44,22 @@
           {:base-url zapi-url
            :username zapi-username})))
 
-(defn- print-person [person]
-  (println "Person ID:" (-> person :id) "| Name:" (str (-> person :last-name) ", " (-> person :first-name)) "| Infos: " (->> person :institutional-directory-infos (join ", "))))
-
-(defn- print-study-class [[link name]]
-  (println "Link:" link "| Name:" name))
-
 (defn run [options]
   (let [zapi-config  (get-zapi-config options)
-        get-person-id (:get-person options)
         get-people (:get-people options)
-        with-non-zhdk (:with-non-zhdk options)
         get-study-classes (:get-study-classes options)]
-    (cond get-person-id
-          (let [person (people/fetch-person zapi-config get-person-id with-non-zhdk)]
-            (print-person person))
-          get-people
-          (->> (people/fetch-people zapi-config with-non-zhdk) (map print-person) doall)
+    (cond get-people
+          (->> (people/fetch-many zapi-config (select-keys options [:person-ids :with-non-zhdk]))
+               doall
+               (study-classes/fetch-decorate-people zapi-config)
+               doall
+               pprint)
           get-study-classes
-          (->> (study-classes/fetch-study-classes-map zapi-config) (map print-study-class) doall)
+          (->> (study-classes/fetch-many zapi-config (select-keys options [:study-class-ids]))
+               doall
+               pprint)
           :else
-          (println "Check usage (--help)"))))
+          (println "Check out usage (--help)"))))
 
 (defn -main [& args]
   (try
