@@ -1,8 +1,8 @@
-(ns madek.zapi-sync.study-classes
+(ns madek.zapi-sync.zapi.study-classes
   (:require
    [clj-http.client :as http-client]
    [clojure.string :refer [join split]]
-   [madek.zapi-sync.http-utils :refer [fetch]]))
+   [madek.zapi-sync.zapi.utils :refer [fetch]]))
 
 (def fieldsets (join "," ["basic"]))
 (def batch-size 100)
@@ -19,7 +19,7 @@
 
 (defn fetch-many
   [zapi-config {:keys [study-class-ids] :as options}]
-  ;; pre-batching in order to avoid "url too long"
+  ;; pre-batching in order to prevent "url too long" error
   (->> (partition-all batch-size (or (some-> study-class-ids (split #",") seq) [nil]))
        (map
         (fn [study-class-id-batch]
@@ -41,21 +41,3 @@
                      :short-name (-> study-class :basic :number)
                      :name (-> study-class :basic :name)}))))))
        (mapcat identity)))
-
-(defn fetch-decorate-people
-  [zapi-config people]
-  (let [name-by-id (->> people
-                        (mapcat :study-class-ids)
-                        distinct
-                        (join ",")
-                        (hash-map :study-class-ids)
-                        (fetch-many zapi-config)
-                        (map (juxt :id :short-name))
-                        (into {}))]
-    (->> people
-         (map
-          (fn [person]
-            (if-let [study-class-names (->> person :study-class-ids (map #(get name-by-id %)) seq)]
-              (update person :institutional-directory-infos
-                      #(concat % [(str "Stud " (join ", " study-class-names))]))
-              person))))))

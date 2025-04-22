@@ -1,8 +1,9 @@
-(ns madek.zapi-sync.people
+(ns madek.zapi-sync.zapi.people
   (:require
    [clj-http.client :as http-client]
    [clojure.string :refer [join]]
-   [madek.zapi-sync.http-utils :refer [fetch]]))
+   [madek.zapi-sync.zapi.utils :refer [fetch]]
+   [madek.zapi-sync.zapi.study-classes :as study-classes]))
 
 (defonce fieldsets (join "," ["default" "basic" "affiliation" "study_base" "study_class"]))
 (defonce batch-size 100)
@@ -38,7 +39,6 @@
   (let [limit batch-size
         first-response (fetch-page zapi-config options 0 limit)
         total-count (-> first-response :pagination_info :result_count (min max-size))]
-    (println total-count)
     (->>
      (loop [offset limit
             results (:data first-response)]
@@ -47,4 +47,27 @@
          (let [next-response (fetch-page zapi-config options offset limit)]
            (recur (+ offset limit)
                   (concat results (:data next-response))))))
-     (map extract-person))))
+     (map extract-person)
+     doall)))
+
+(defn fetch-many-with-study-classes [zapi-config options]
+  (let [people (doall (fetch-many zapi-config options))
+        study-class-ids (->> people
+                             (mapcat :study-class-ids)
+                             distinct)
+        study-class-name-by-id (if (seq study-class-ids)
+                                 (->> study-class-ids
+                                      (join ",")
+                                      (hash-map :study-class-ids)
+                                      (study-classes/fetch-many zapi-config)
+                                      (map (juxt :id :short-name))
+                                      (into {}))
+                                 {})]
+    (->> people
+         (map
+          (fn [person]
+            (if-let [study-class-names (->> person :study-class-ids (map #(get study-class-name-by-id %)) seq)]
+              (update person :institutional-directory-infos
+                      #(concat % [(str "Stud " (join ", " study-class-names))]))
+              person)))
+         doall)))
