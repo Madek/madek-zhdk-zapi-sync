@@ -1,6 +1,7 @@
 (ns madek.zapi-sync.data-file
-  (:require [cheshire.core :as cheshire]
-            [taoensso.timbre :refer [info]]))
+  (:require
+   [cheshire.core :as cheshire]
+   [taoensso.timbre :refer [info]]))
 
 (defn run-write [data filename]
   (info (str "Writing data to " filename " ..."))

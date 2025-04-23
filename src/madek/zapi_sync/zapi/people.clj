@@ -14,18 +14,18 @@
   {:id (-> data :id)
    :first-name (-> data :basic :first_name)
    :last-name (-> data :basic :last_name)
-   :institutional-directory-infos (let [is-faculty (some #(-> data :affiliation %) [:is_mid-tier :is_lecturer])
-                                        is-staff (-> data :affiliation :is_staff)]
-                                    (->> [(when is-staff "Staff")
-                                          (when is-faculty "Faculty")]
-                                         (remove nil?)))
+   :infos (let [is-faculty (some #(-> data :affiliation %) [:is_mid-tier :is_lecturer])
+                is-staff (-> data :affiliation :is_staff)]
+            (->> [(when is-staff "Staff")
+                  (when is-faculty "Faculty")]
+                 (remove nil?)))
    :study-class-ids (->> data :study_class
                          (map #(some-> % :study_class :id)))})
 
 (defn- fetch-page
-  [{:keys [base-url username]} {:keys [with-non-zhdk person-ids]} offset limit]
+  [{:keys [base-url username]} {:keys [with-non-zhdk id-filter]} offset limit]
   (let [url (str base-url
-                 "person" (when person-ids (str "/" person-ids)) "?"
+                 "person" (when id-filter (str "/" id-filter)) "?"
                  (http-client/generate-query-string
                   (-> {:fieldsets fieldsets
                        :order_by "name-asc"
@@ -58,7 +58,7 @@
         study-class-name-by-id (if (seq study-class-ids)
                                  (->> study-class-ids
                                       (join ",")
-                                      (hash-map :study-class-ids)
+                                      (hash-map :id-filter)
                                       (study-classes/fetch-many zapi-config)
                                       (map (juxt :id :short-name))
                                       (into {}))
@@ -67,7 +67,7 @@
          (map
           (fn [person]
             (if-let [study-class-names (->> person :study-class-ids (map #(get study-class-name-by-id %)) seq)]
-              (update person :institutional-directory-infos
+              (update person :infos
                       #(concat % [(str "Stud " (join ", " study-class-names))]))
               person)))
          doall)))
