@@ -1,47 +1,39 @@
 (ns madek.zapi-sync.core
-  (:require [madek.zapi-sync.data-file :as data-file]
-            [madek.zapi-sync.madek-api :as madek-api]
-            [madek.zapi-sync.zapi.people :as people]
-            [madek.zapi-sync.zapi.study-classes :as study-classes]
-            [clojure.pprint :refer [pprint]]
-            [clojure.string :refer [join]]
-            [clojure.tools.cli :as cli]
-            [taoensso.timbre :refer [info]]))
+  (:require
+   [clojure.pprint :refer [pprint]]
+   [clojure.string :refer [join]]
+   [clojure.tools.cli :as cli]
+   [madek.zapi-sync.data-file :as data-file]
+   [madek.zapi-sync.madek-api :as madek-api]
+   [madek.zapi-sync.zapi.people :as people]
+   [madek.zapi-sync.zapi.study-classes :as study-classes]
+   [taoensso.timbre :refer [info]]))
 
-(defn usage [options-summary & more]
+(defn usage [options-summary]
   (->> ["Madek ZHdK ZAPI Sync"
         ""
         "usage: clojure -M -m madek.zapi-sync.core [<opts>]"
         ""
-        "Options:"
+        "Options summary:"
         options-summary
-        ""
-        ""
-        (when more
-          ["-------------------------------------------------------------------"
-           ""
-           (with-out-str (pprint more))
-           "-------------------------------------------------------------------"])]
+        ""]
        flatten (join \newline)))
 
 (def cli-option-specs
   [["-h" "--help"]
-   [nil "--zapi-url ZAPI_URL" "Base URL of ZAPI with trailing slash. Defaults to env var `ZAPI_URL`"]
-   [nil "--zapi-username ZAPI_USERNAME" "ZAPI username. Defaults to env var `ZAPI_USERNAME`"]
+   [nil "--sync-people" "Command: Get people from ZAPI and sync them to Madek"]
+   [nil "--get-people" "Command: Get people from ZAPI and write them to output"]
+   [nil "--get-study-classes" "Command: Get study classes from ZAPI and write them to output (for debugging)"]
 
-   [nil "--get-people" "Get and print a list of people"]
-   [nil "--get-study-classes" "(DEBUG) Get and print a list of study-classes"]
-   [nil "--with-non-zhdk" "Option to use with --get-people. Omit the `only-zhdk` filter (requires special permission in ZAPI!)"]
-   [nil "--id-filter ID_FILTER" "Option to use with --get-people or --get-study-classes. Filters by comma-separated list of ids"]
+   [nil "--zapi-url ZAPI_URL" "Config: Base URL of ZAPI with trailing slash. Defaults to env var `ZAPI_URL`"]
+   [nil "--zapi-username ZAPI_USERNAME" "Config: ZAPI username. Defaults to env var `ZAPI_USERNAME`"]
+   [nil "--madek-api-url MADEK_API_URL" "Config: Base URL of Madek API V2 with trailing slash. Defaults to env var `MADEK_API_URL`"]
+   [nil "--madek-api-token MADEK_API_TOKEN" "Config: API Token for Madek API V2. Defaults to env var `MADEK_API_TOKEN`"]
+   [nil "--institution INSTITUTION" "Config: Institution (builds the unique identifier together with `institutional_id` coming from ZAPI)"]
 
-   [nil "--output-file OUTPUT_FILE" "Used in combination with --get-people or --get-study-classes, will write json data to file instead of stdout."]
-
-   [nil "--madek-api-url MADEK_API_URL" "Base URL of Madek API V2 with trailing slash. Defaults to env var `MADEK_API_URL`"]
-   [nil "--madek-api-token MADEK_API_TOKEN" "API Token for Madek API V2. Defaults to env var `MADEK_API_TOKEN`"]
-
-   [nil "--sync-people" "Sync people to Madek. "]
-   [nil "--institution INSTITUTION" "Institution (required when syncing to define the scope of the institutional id)"]
-   [nil "--input-file INPUT_FILE" "Used in combination with --sync-people, will read json data from file instead of fetching it from ZAPI."]])
+   [nil "--id-filter ID_FILTER" "Option: Get data from ZAPI filtered by a list of ids (comma-separated)"]
+   [nil "--output-file OUTPUT_FILE" "Option: With --get-people and --get-study-classes, write json data to a file (otherwise to stdout)"]
+   [nil "--input-file INPUT_FILE" "Option: With --sync-people, skip querying ZAPI and use json data from a file instead"]])
 
 (defn- require-zapi-config [options]
   (let [zapi-url (or (:zapi-url options) (System/getenv "ZAPI_URL"))
@@ -77,30 +69,37 @@
     (data-file/run-write data filename)
     (pprint data)))
 
-(defn run [{:keys [get-people get-study-classes output-file
-                   sync-people input-file] :as options}]
-  (cond get-people
-        (->> (people/fetch-many-with-study-classes (require-zapi-config options) (select-keys options [:id-filter :with-non-zhdk]))
-             (out output-file))
-        get-study-classes
-        (->> (study-classes/fetch-many (require-zapi-config options) (select-keys options [:id-filter]))
-             (out output-file))
-        sync-people
-        (if input-file
-          (madek-api/sync-many (require-madek-api-config options) (require-institution options) (data-file/run-read input-file))
-          (->> (people/fetch-many-with-study-classes (require-zapi-config options) (select-keys options [:id-filter :with-non-zhdk]))
-               (madek-api/sync-many (require-madek-api-config options) (require-institution options))))
-        :else
-        (println "Check out usage (--help)")))
+(defn- run-sync-people [options]
+  (if-let [input-file (:input-file options)]
+    (madek-api/sync-many (require-madek-api-config options) (require-institution options) (data-file/run-read input-file))
+    (->> (people/fetch-many-with-study-classes (require-zapi-config options) (select-keys options [:id-filter]))
+         (madek-api/sync-many (require-madek-api-config options) (require-institution options)))))
+
+(defn- run-get-people [options]
+  (->> (people/fetch-many-with-study-classes (require-zapi-config options) (select-keys options [:id-filter]))
+       (out (:output-file options))))
+
+(defn- run-get-study-classes [options]
+  (->> (study-classes/fetch-many (require-zapi-config options) (select-keys options [:id-filter]))
+       (out (:output-file options))))
+
+(defn run [{:keys [get-people get-study-classes sync-people] :as options}]
+  (cond get-people (run-get-people options)
+        get-study-classes (run-get-study-classes options)
+        sync-people (run-sync-people options)
+        :else (println "Check out usage (--help)")))
 
 (defn -main [& args]
   (info "Madek ZAPI Sync...")
   (try
-    (let [{:keys [options arguments errors summary]}
+    (let [{:keys [options #_arguments errors summary]}
           (cli/parse-opts args cli-option-specs :in-order true)]
       (cond
+        (seq errors)
+        (do (println "Check out usage (--help)")
+            (pprint errors))
         (:help options)
-        (println (usage summary {:options options :arguments arguments :errors errors}))
+        (println (usage summary))
         :else
         (run options))
       (System/exit 0))
