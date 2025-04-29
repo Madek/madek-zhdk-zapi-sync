@@ -2,11 +2,18 @@
   (:require
    [clj-http.client :as http-client]
    [clojure.string :refer [join split]]
+   [madek.zapi-sync.utils :refer [batch-fetcher]]
    [madek.zapi-sync.zapi.utils :refer [fetch]]))
 
 (def fieldsets (join "," ["basic"]))
 (def batch-size 100)
-(def max-size Integer/MAX_VALUE)
+
+(defn- extract-study-class
+  [data]
+  {:id (-> data :id)
+   :link (-> data :links :self)
+   :short-name (-> data :basic :number)
+   :name (-> data :basic :name)})
 
 (defn- fetch-page
   [{:keys [base-url username]} {:keys [id-filter]} offset limit]
@@ -19,25 +26,14 @@
 
 (defn fetch-many
   [zapi-config {:keys [id-filter] :as options}]
-  ;; pre-batching in order to prevent "url too long" error
+  ;; pre-batching when using id-filter (in order to prevent "url too long" error)
   (->> (partition-all batch-size (or (some-> id-filter (split #",") seq) [nil]))
        (map
         (fn [batch-of-ids]
-          (let [options (assoc options :id-filter (some->> batch-of-ids (join ",")))
-                limit batch-size
-                first-response (fetch-page zapi-config options 0 limit)
-                total-count (-> first-response :pagination_info :result_count (min max-size))]
-            (->>
-             (loop [offset limit
-                    results (:data first-response)]
-               (if (>= (count results) total-count)
-                 results
-                 (let [next-response (fetch-page zapi-config options offset limit)]
-                   (recur (+ offset limit)
-                          (concat results (:data next-response))))))
-             (map (fn [study-class]
-                    {:id (-> study-class :id)
-                     :link (-> study-class :links :self)
-                     :short-name (-> study-class :basic :number)
-                     :name (-> study-class :basic :name)}))))))
+          (let [options (assoc options :id-filter (some->> batch-of-ids (join ",")))]
+            (->> (batch-fetcher
+                  #(fetch-page zapi-config options %1 %2)
+                  #(-> % :pagination_info :result_count)
+                  batch-size)
+                 (map extract-study-class)))))
        (mapcat identity)))

@@ -9,6 +9,8 @@
    [madek.zapi-sync.zapi.study-classes :as study-classes]
    [taoensso.timbre :refer [info]]))
 
+(def INSTITUTION "zhdk.ch")
+
 (defn usage [options-summary]
   (->> ["Madek ZHdK ZAPI Sync"
         ""
@@ -21,7 +23,8 @@
 
 (def cli-option-specs
   [["-h" "--help"]
-   [nil "--sync-people" "Command: Get people from ZAPI and sync them to Madek"]
+   [nil "--sync-people" "Command: Get people from ZAPI and sync them to Madek (see also --with-deactivation)"]
+   [nil "--with-deactivation" "- Use together with --sync-people to also deactivate people which are gone from ZAPI. Do NOT apply when incomplete ZAPI data is used (see --id-filter)"]
    [nil "--get-people" "Command: Get people from ZAPI and write them to output"]
    [nil "--get-study-classes" "Command: Get study classes from ZAPI and write them to output (for debugging)"]
 
@@ -29,7 +32,7 @@
    [nil "--zapi-username ZAPI_USERNAME" "Config: ZAPI username. Defaults to env var `ZAPI_USERNAME`"]
    [nil "--madek-api-url MADEK_API_URL" "Config: Base URL of Madek API V2 with trailing slash. Defaults to env var `MADEK_API_URL`"]
    [nil "--madek-api-token MADEK_API_TOKEN" "Config: API Token for Madek API V2. Defaults to env var `MADEK_API_TOKEN`"]
-   [nil "--institution INSTITUTION" "Config: Institution (builds the unique identifier together with `institutional_id` coming from ZAPI)"]
+   #_[nil "--institution INSTITUTION" "Config: Institution (builds the unique identifier together with `institutional_id` coming from ZAPI)"]
 
    [nil "--id-filter ID_FILTER" "Option: Get data from ZAPI filtered by a list of ids (comma-separated)"]
    [nil "--output-file OUTPUT_FILE" "Option: With --get-people and --get-study-classes, write json data to a file (otherwise to stdout)"]
@@ -59,10 +62,10 @@
       {:base-url madek-api-url
        :auth-header (str "token " madek-api-token)})))
 
-(defn- require-institution [{:keys [institution]}]
-  (if (empty? institution)
-    (throw (Exception. "INSTITUTION not present in options (--institution <INSTITUTION>)"))
-    institution))
+#_(defn- require-institution [{:keys [institution]}]
+    (if (empty? institution)
+      (throw (Exception. "INSTITUTION not present in options (--institution <INSTITUTION>)"))
+      institution))
 
 (defn- out [filename data]
   (if filename
@@ -70,13 +73,20 @@
     (pprint data)))
 
 (defn- run-sync-people [options]
-  (if-let [input-file (:input-file options)]
-    (madek-api/sync-many (require-madek-api-config options) (require-institution options) (data-file/run-read input-file))
-    (->> (people/fetch-many-with-study-classes (require-zapi-config options) (select-keys options [:id-filter]))
-         (madek-api/sync-many (require-madek-api-config options) (require-institution options)))))
+  (let [zapi-people
+        (if-let [input-file (:input-file options)]
+          (data-file/run-read input-file)
+          (people/fetch-many-with-study-classes
+           (require-zapi-config options)
+           (select-keys options [:id-filter])))
+        madek-api-config (require-madek-api-config options)]
+    (madek-api/sync-people madek-api-config INSTITUTION zapi-people)
+    (if (:with-deactivation options)
+      (madek-api/inactivate-missing-people madek-api-config INSTITUTION zapi-people)
+      (println "NOTE: Sync is not complete, deactivation task was skipped! See `--with-deactivation` option"))))
 
 (defn- run-get-people [options]
-  (->> (people/fetch-many-with-study-classes (require-zapi-config options) (select-keys options [:id-filter]))
+  (->> (people/fetch-many (require-zapi-config options) (select-keys options [:id-filter]))
        (out (:output-file options))))
 
 (defn- run-get-study-classes [options]
@@ -87,7 +97,7 @@
   (cond get-people (run-get-people options)
         get-study-classes (run-get-study-classes options)
         sync-people (run-sync-people options)
-        :else (println "Check out usage (--help)")))
+        :else (println "No command found. Check usage (--help)")))
 
 (defn -main [& args]
   (info "Madek ZAPI Sync...")

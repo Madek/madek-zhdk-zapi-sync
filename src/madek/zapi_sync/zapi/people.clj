@@ -2,12 +2,12 @@
   (:require
    [clj-http.client :as http-client]
    [clojure.string :refer [join]]
-   [madek.zapi-sync.zapi.utils :refer [fetch]]
-   [madek.zapi-sync.zapi.study-classes :as study-classes]))
+   [madek.zapi-sync.utils :refer [batch-fetcher]]
+   [madek.zapi-sync.zapi.study-classes :as study-classes]
+   [madek.zapi-sync.zapi.utils :refer [fetch]]))
 
 (defonce fieldsets (join "," ["default" "basic" "affiliation" "study_base" "study_class"]))
 (defonce batch-size 100)
-(def max-size Integer/MAX_VALUE)
 
 (defn- extract-person
   [data]
@@ -36,19 +36,12 @@
 
 (defn fetch-many
   [zapi-config options]
-  (let [limit batch-size
-        first-response (fetch-page zapi-config options 0 limit)
-        total-count (-> first-response :pagination_info :result_count (min max-size))]
-    (->>
-     (loop [offset limit
-            results (:data first-response)]
-       (if (>= (count results) total-count)
-         results
-         (let [next-response (fetch-page zapi-config options offset limit)]
-           (recur (+ offset limit)
-                  (concat results (:data next-response))))))
-     (map extract-person)
-     doall)))
+  (->> (batch-fetcher
+        #(fetch-page zapi-config options %1 %2)
+        #(-> % :pagination_info :result_count)
+        batch-size)
+       (map extract-person)
+       doall))
 
 (defn fetch-many-with-study-classes [zapi-config options]
   (let [people (doall (fetch-many zapi-config options))

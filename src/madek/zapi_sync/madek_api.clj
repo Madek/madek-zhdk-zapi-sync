@@ -2,7 +2,6 @@
   (:require
    [clj-http.client :as http-client]
    [clojure.pprint :refer [pprint]]
-   [madek.zapi-sync.madek-api :as madek-api]
    [taoensso.timbre :refer [debug]]))
 
 (defn- fetch-one
@@ -15,6 +14,19 @@
     (-> (http-client/get url {:as :json
                               :headers {"Authorization" auth-header}})
         :body :people first)))
+
+(defn- fetch-all-with-institution
+  [{:keys [base-url auth-header]} institution]
+  (let [url (str base-url
+                 "admin/people" "?"
+                 (http-client/generate-query-string {:subtype "Person" :institution institution}))]
+    (debug "fetching" url)
+    (->> (http-client/get url {:as :json
+                               :headers {"Authorization" auth-header}})
+         :body :people
+         (filter (fn [p]
+                   (and (:institutional_id p)
+                        (not (:institutional_directory_inactive_since p))))))))
 
 (defn- post
   [{:keys [base-url auth-header]} data]
@@ -68,30 +80,15 @@
                    (remove #{"Staff" "Faculty"})
                    vec)
         data {:institutional_directory_infos infos
-              :institutional_directory_inactive_since (java.time.Instant/now)}]
+              :institutional_directory_inactive_since (.toString (java.time.Instant/now))}]
     (patch madek-api-config (:id madek-person) data)
     (debug "ok, inactivated")))
 
-(defn- fetch-all-with-institution
-  [{:keys [base-url auth-header]} institution]
-  (let [url (str base-url
-                 "admin/people" "?"
-                 (http-client/generate-query-string {:subtype "Person" :institution institution}))]
-    (debug "fetching" url)
-    (->> (http-client/get url {:as :json
-                               :headers {"Authorization" auth-header}})
-         :body :people
-         (filter (fn [p]
-                   (and (:institutional_id p)
-                        (not (:institutional_directory_inactive_since p))))))))
-
-;; Achtung, das darf nur gemacht werden, wenn institutional-people vollständig ist (also nicht wenn gefiltert)
-(defn- inactivate-many [madek-api-config institution zapi-people]
+(defn inactivate-missing-people [madek-api-config institution zapi-people]
   (->> (fetch-all-with-institution madek-api-config institution)
-       (filter (fn [p] (not (some #(-> p :institutional_id (= (:id %))) zapi-people))))
-       pprint
-       #_(run! #(inactivate-one madek-api-config %))))
+       (take 1)
+       (filter (fn [p] (not (some #(-> p :institutional_id (= (-> % :id str))) zapi-people))))
+       (run! #(inactivate-one madek-api-config %))))
 
-(defn sync-many [madek-api-config institution zapi-people]
-  #_(->> zapi-people (run! #(sync-one madek-api-config institution %)))
-  (inactivate-many madek-api-config institution zapi-people))
+(defn sync-people [madek-api-config institution zapi-people]
+  (->> zapi-people (run! #(sync-one madek-api-config institution %))))
