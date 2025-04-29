@@ -13,3 +13,7 @@
          (let [next-response (fetch-page-fn offset limit)]
            (recur (+ offset limit)
                   (concat results (:data next-response)))))))))
+
+(defn now-iso-local []
+  (.format java.time.format.DateTimeFormatter/ISO_OFFSET_DATE_TIME
+           (java.time.OffsetDateTime/now)))

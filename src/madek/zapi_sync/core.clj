@@ -73,16 +73,15 @@
     (pprint data)))
 
 (defn- run-sync-people [options]
-  (let [zapi-people
-        (if-let [input-file (:input-file options)]
-          (data-file/run-read input-file)
-          (people/fetch-many-with-study-classes
-           (require-zapi-config options)
-           (select-keys options [:id-filter])))
+  (let [zapi-people (if-let [input-file (:input-file options)]
+                      (data-file/run-read input-file)
+                      (people/fetch-many-with-study-classes
+                       (require-zapi-config options)
+                       (select-keys options [:id-filter])))
         madek-api-config (require-madek-api-config options)]
     (madek-api/sync-people madek-api-config INSTITUTION zapi-people)
     (if (:with-deactivation options)
-      (madek-api/inactivate-missing-people madek-api-config INSTITUTION zapi-people)
+      (madek-api/deactivate-gone-people madek-api-config INSTITUTION zapi-people)
       (println "NOTE: Sync is not complete, deactivation task was skipped! See `--with-deactivation` option"))))
 
 (defn- run-get-people [options]
@@ -97,7 +96,7 @@
   (cond get-people (run-get-people options)
         get-study-classes (run-get-study-classes options)
         sync-people (run-sync-people options)
-        :else (println "No command found. Check usage (--help)")))
+        :else (println "No command given. Check usage (--help)")))
 
 (defn -main [& args]
   (info "Madek ZAPI Sync...")

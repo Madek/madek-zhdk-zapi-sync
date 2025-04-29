@@ -1,7 +1,7 @@
 (ns madek.zapi-sync.madek-api
   (:require
    [clj-http.client :as http-client]
-   [clojure.pprint :refer [pprint]]
+   [madek.zapi-sync.utils :refer [now-iso-local]]
    [taoensso.timbre :refer [debug]]))
 
 (defn- fetch-one
@@ -73,22 +73,21 @@
         (post madek-api-config data)
         (debug "ok, posted")))))
 
-(defn- inactivate-one [madek-api-config madek-person]
-  (debug "inactivate-one" (:institutional_id madek-person))
+(defn- deactivate-one [madek-api-config madek-person]
+  (debug "deactivate-one" (:institutional_id madek-person))
   (let [infos (->> madek-person
                    :institutional_directory_infos
                    (remove #{"Staff" "Faculty"})
                    vec)
         data {:institutional_directory_infos infos
-              :institutional_directory_inactive_since (.toString (java.time.Instant/now))}]
+              :institutional_directory_inactive_since (now-iso-local)}]
     (patch madek-api-config (:id madek-person) data)
-    (debug "ok, inactivated")))
+    (debug "ok, deactivated")))
 
-(defn inactivate-missing-people [madek-api-config institution zapi-people]
+(defn deactivate-gone-people [madek-api-config institution zapi-people]
   (->> (fetch-all-with-institution madek-api-config institution)
-       (take 1)
        (filter (fn [p] (not (some #(-> p :institutional_id (= (-> % :id str))) zapi-people))))
-       (run! #(inactivate-one madek-api-config %))))
+       (run! #(deactivate-one madek-api-config %))))
 
 (defn sync-people [madek-api-config institution zapi-people]
   (->> zapi-people (run! #(sync-one madek-api-config institution %))))
