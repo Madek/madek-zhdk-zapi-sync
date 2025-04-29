@@ -85,7 +85,7 @@
       (println "NOTE: Sync is not complete, deactivation task was skipped! See `--with-deactivation` option"))))
 
 (defn- run-get-people [options]
-  (->> (people/fetch-many (require-zapi-config options) (select-keys options [:id-filter]))
+  (->> (people/fetch-many-with-study-classes (require-zapi-config options) (select-keys options [:id-filter]))
        (out (:output-file options))))
 
 (defn- run-get-study-classes [options]
