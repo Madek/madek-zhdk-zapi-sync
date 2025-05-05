@@ -15,7 +15,7 @@
                               :headers {"Authorization" auth-header}})
         :body :people first)))
 
-(defn- fetch-all-with-institution
+(defn- fetch-institutional-people
   [{:keys [base-url auth-header]} institution]
   (let [url (str base-url
                  "admin/people" "?"
@@ -24,9 +24,7 @@
     (->> (http-client/get url {:as :json
                                :headers {"Authorization" auth-header}})
          :body :people
-         (filter (fn [p]
-                   (and (:institutional_id p)
-                        (not (:institutional_directory_inactive_since p))))))))
+         (filter :institutional_id))))
 
 (defn- post
   [{:keys [base-url auth-header]} data]
@@ -84,10 +82,28 @@
     (patch madek-api-config (:id madek-person) data)
     (debug "ok, deactivated")))
 
-(defn deactivate-gone-people [madek-api-config institution zapi-people]
-  (->> (fetch-all-with-institution madek-api-config institution)
+(defn- history-sync-one [madek-api-config fetch-from-zapi madek-person]
+  (debug "history-sync-one" (:institutional_id madek-person))
+  (let [zapi-person (fetch-from-zapi (:institutional_id madek-person))]
+    (when zapi-person
+      (if (= (:institutional_directory_infos madek-person) (:infos zapi-person))
+        (debug "Infos unmodified (nothing to write)")
+        (let [data {:institutional_directory_infos (:infos zapi-person)}]
+          (patch madek-api-config (:id madek-person) data))))))
+
+;; Tasks
+
+(defn deactivation-task [madek-api-config institution zapi-people]
+  (->> (fetch-institutional-people madek-api-config institution)
+       (filter (fn [p] (-> p :institutional_directory_inactive_since not)))
        (filter (fn [p] (not (some #(-> p :institutional_id (= (-> % :id str))) zapi-people))))
        (run! #(deactivate-one madek-api-config %))))
 
-(defn sync-people [madek-api-config institution zapi-people]
-  (->> zapi-people (run! #(sync-one madek-api-config institution %))))
+(defn sync-task [madek-api-config institution zapi-people]
+  (->> zapi-people
+       (run! #(sync-one madek-api-config institution %))))
+
+(defn history-sync-task [madek-api-config institution fetch-from-zapi]
+  (->> (fetch-institutional-people madek-api-config institution)
+       (filter (fn [p] (-> p :institutional_directory_inactive_since)))
+       (run! #(history-sync-one madek-api-config fetch-from-zapi %))))

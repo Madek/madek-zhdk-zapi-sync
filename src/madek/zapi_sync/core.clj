@@ -27,6 +27,7 @@
    [nil "--with-deactivation" "- Use together with --sync-people to also deactivate people which are gone from ZAPI. Do NOT apply when incomplete ZAPI data is used (see --id-filter)"]
    [nil "--get-people" "Command: Get people from ZAPI and write them to output"]
    [nil "--get-study-classes" "Command: Get study classes from ZAPI and write them to output (for debugging)"]
+   [nil "--history-sync" "Command: Sync infos from ZAPI for inactive people present in Madek DB. Requires special permissions in ZAPI!"]
 
    [nil "--zapi-url ZAPI_URL" "Config: Base URL of ZAPI with trailing slash. Defaults to env var `ZAPI_URL`"]
    [nil "--zapi-username ZAPI_USERNAME" "Config: ZAPI username. Defaults to env var `ZAPI_USERNAME`"]
@@ -79,9 +80,9 @@
                        (require-zapi-config options)
                        (select-keys options [:id-filter])))
         madek-api-config (require-madek-api-config options)]
-    (madek-api/sync-people madek-api-config INSTITUTION zapi-people)
+    (madek-api/sync-task madek-api-config INSTITUTION zapi-people)
     (if (:with-deactivation options)
-      (madek-api/deactivate-gone-people madek-api-config INSTITUTION zapi-people)
+      (madek-api/deactivation-task madek-api-config INSTITUTION zapi-people)
       (println "NOTE: Sync is not complete, deactivation task was skipped! See `--with-deactivation` option"))))
 
 (defn- run-get-people [options]
@@ -92,10 +93,17 @@
   (->> (study-classes/fetch-many (require-zapi-config options) (select-keys options [:id-filter]))
        (out (:output-file options))))
 
-(defn run [{:keys [get-people get-study-classes sync-people] :as options}]
+(defn- run-history-sync [options]
+  (let [mapi-config (require-madek-api-config options)
+        zapi-config (require-zapi-config options)
+        fetch-from-zapi (fn [id] (people/fetch-inactive-person zapi-config id))]
+    (madek-api/history-sync-task mapi-config INSTITUTION fetch-from-zapi)))
+
+(defn run [{:keys [get-people get-study-classes sync-people history-sync] :as options}]
   (cond get-people (run-get-people options)
         get-study-classes (run-get-study-classes options)
         sync-people (run-sync-people options)
+        history-sync (run-history-sync options)
         :else (println "No command given. Check usage (--help)")))
 
 (defn -main [& args]

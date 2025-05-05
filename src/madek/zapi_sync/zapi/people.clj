@@ -1,5 +1,6 @@
 (ns madek.zapi-sync.zapi.people
   (:require
+   [clojure.pprint :refer [pprint]]
    [clj-http.client :as http-client]
    [clojure.string :refer [join]]
    [madek.zapi-sync.utils :refer [batch-fetcher]]
@@ -23,15 +24,14 @@
                          (map #(some-> % :study_class :id)))})
 
 (defn- fetch-page
-  [{:keys [base-url username]} {:keys [with-non-zhdk id-filter]} offset limit]
+  [{:keys [base-url username]} {:keys [id-filter]} offset limit]
   (let [url (str base-url
                  "person" (when id-filter (str "/" id-filter)) "?"
-                 (http-client/generate-query-string
-                  (-> {:fieldsets fieldsets
-                       :order_by "name-asc"
-                       :offset offset
-                       :limit limit}
-                      (#(if with-non-zhdk % (assoc % :only_zhdk true))))))]
+                 (http-client/generate-query-string (-> {:fieldsets fieldsets
+                                                         :only_zhdk true
+                                                         :order_by "name-asc"
+                                                         :offset offset
+                                                         :limit limit})))]
     (fetch url username)))
 
 (defn fetch-many
@@ -42,6 +42,10 @@
         batch-size)
        (map extract-person)
        doall))
+
+(defn- update-study-class-names [person study-class-names]
+  (update person :infos
+          #(concat % [(str "Stud " (join ", " study-class-names))])))
 
 (defn fetch-many-with-study-classes [zapi-config options]
   (let [people (doall (fetch-many zapi-config options))
@@ -60,7 +64,23 @@
          (map
           (fn [person]
             (if-let [study-class-names (->> person :study-class-ids (map #(get study-class-name-by-id %)) seq)]
-              (update person :infos
-                      #(concat % [(str "Stud " (join ", " study-class-names))]))
+              (update-study-class-names person study-class-names)
               person)))
          doall)))
+
+(defn fetch-inactive-person [{:keys [base-url username] :as zapi-config} id]
+  (let [url (str base-url
+                 "person/" id "?"
+                 (http-client/generate-query-string {:fieldsets fieldsets}))
+        response (http-client/get url {:as :json :basic-auth [username ""] :throw-exceptions false})
+        status (:status response)]
+    (if (= status 200)
+      (let [person (extract-person (-> response :body :data first))
+            study-class-names (some->> person :study-class-ids seq (join ",")
+                                       (hash-map :id-filter)
+                                       (study-classes/fetch-many zapi-config)
+                                       (map :short-name))]
+        (if (seq study-class-names)
+          (update-study-class-names person study-class-names)
+          person))
+      (do (println id "Status" status) nil))))
