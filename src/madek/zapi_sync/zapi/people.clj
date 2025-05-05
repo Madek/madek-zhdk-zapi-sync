@@ -5,7 +5,8 @@
    [clojure.string :refer [join]]
    [madek.zapi-sync.utils :refer [batch-fetcher]]
    [madek.zapi-sync.zapi.study-classes :as study-classes]
-   [madek.zapi-sync.zapi.utils :refer [fetch]]))
+   [madek.zapi-sync.zapi.utils :refer [fetch]]
+   [taoensso.timbre :refer [debug]]))
 
 (defonce fieldsets (join "," ["default" "basic" "affiliation" "study_base" "study_class"]))
 (defonce batch-size 100)
@@ -13,6 +14,7 @@
 (defn- extract-person
   [data]
   {:id (-> data :id)
+   :active? (-> data :basic :is_zhdk)
    :first-name (-> data :basic :first_name)
    :last-name (-> data :basic :last_name)
    :infos (let [is-faculty (some #(-> data :affiliation %) [:is_mid-tier :is_lecturer])
@@ -21,7 +23,8 @@
                   (when is-faculty "Faculty")]
                  (remove nil?)))
    :study-class-ids (->> data :study_class
-                         (map #(some-> % :study_class :id)))})
+                         (filter #(or (:is_successfully_completed %) (:is_current %)))
+                         (map #(-> % :study_class :id)))})
 
 (defn- fetch-page
   [{:keys [base-url username]} {:keys [id-filter]} offset limit]
@@ -34,7 +37,8 @@
                                                          :limit limit})))]
     (fetch url username)))
 
-(defn fetch-many
+(defn- fetch-active-people-raw
+  "Fetch active people from ZAPI (without resolving study class names)"
   [zapi-config options]
   (->> (batch-fetcher
         #(fetch-page zapi-config options %1 %2)
@@ -44,11 +48,14 @@
        doall))
 
 (defn- update-study-class-names [person study-class-names]
-  (update person :infos
-          #(concat % [(str "Stud " (join ", " study-class-names))])))
+  (if (seq study-class-names)
+    (update person :infos #(concat % [(str "Stud " (join ", " study-class-names))]))
+    person))
 
-(defn fetch-many-with-study-classes [zapi-config options]
-  (let [people (doall (fetch-many zapi-config options))
+(defn fetch-active-people
+  "Fetch active people from ZAPI"
+  [zapi-config options]
+  (let [people (doall (fetch-active-people-raw zapi-config options))
         study-class-ids (->> people
                              (mapcat :study-class-ids)
                              distinct)
@@ -63,12 +70,13 @@
     (->> people
          (map
           (fn [person]
-            (if-let [study-class-names (->> person :study-class-ids (map #(get study-class-name-by-id %)) seq)]
-              (update-study-class-names person study-class-names)
-              person)))
+            (let [study-class-names (->> person :study-class-ids (map #(get study-class-name-by-id %)) seq)]
+              (update-study-class-names person study-class-names))))
          doall)))
 
-(defn fetch-inactive-person [{:keys [base-url username] :as zapi-config} id]
+(defn fetch-person
+  "Fetch person from ZAPI (be it inactive or active). Returns nil when status is not 200."
+  [{:keys [base-url username] :as zapi-config} id]
   (let [url (str base-url
                  "person/" id "?"
                  (http-client/generate-query-string {:fieldsets fieldsets}))
@@ -80,7 +88,5 @@
                                        (hash-map :id-filter)
                                        (study-classes/fetch-many zapi-config)
                                        (map :short-name))]
-        (if (seq study-class-names)
-          (update-study-class-names person study-class-names)
-          person))
-      (do (println id "Status" status) nil))))
+        (update-study-class-names person study-class-names))
+      (do (debug id "Status" status) nil))))

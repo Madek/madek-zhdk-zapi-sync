@@ -74,19 +74,21 @@
     (pprint data)))
 
 (defn- run-sync-people [options]
-  (let [zapi-people (if-let [input-file (:input-file options)]
+  (let [zapi-config (require-zapi-config options)
+        zapi-people (if-let [input-file (:input-file options)]
                       (data-file/run-read input-file)
-                      (people/fetch-many-with-study-classes
-                       (require-zapi-config options)
+                      (people/fetch-active-people
+                       zapi-config
                        (select-keys options [:id-filter])))
+        get-zapi-person (fn [id] (people/fetch-person zapi-config id))
         madek-api-config (require-madek-api-config options)]
     (madek-api/sync-task madek-api-config INSTITUTION zapi-people)
     (if (:with-deactivation options)
-      (madek-api/deactivation-task madek-api-config INSTITUTION zapi-people)
+      (madek-api/deactivation-task madek-api-config INSTITUTION zapi-people get-zapi-person)
       (println "NOTE: Sync is not complete, deactivation task was skipped! See `--with-deactivation` option"))))
 
 (defn- run-get-people [options]
-  (->> (people/fetch-many-with-study-classes (require-zapi-config options) (select-keys options [:id-filter]))
+  (->> (people/fetch-active-people (require-zapi-config options) (select-keys options [:id-filter]))
        (out (:output-file options))))
 
 (defn- run-get-study-classes [options]
@@ -96,8 +98,8 @@
 (defn- run-history-sync [options]
   (let [mapi-config (require-madek-api-config options)
         zapi-config (require-zapi-config options)
-        fetch-from-zapi (fn [id] (people/fetch-inactive-person zapi-config id))]
-    (madek-api/history-sync-task mapi-config INSTITUTION fetch-from-zapi)))
+        get-zapi-person (fn [id] (people/fetch-person zapi-config id))]
+    (madek-api/history-sync-task mapi-config INSTITUTION get-zapi-person)))
 
 (defn run [{:keys [get-people get-study-classes sync-people history-sync] :as options}]
   (cond get-people (run-get-people options)
