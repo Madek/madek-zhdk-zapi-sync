@@ -33,16 +33,16 @@
    [nil "--sync-people" "Command: Get active people from ZAPI and sync them to Madek. Inactivate people when not active in ZAPI anymore"]
    [nil "--sync-inactive-people" "Command: Update people which are already inactive (to pull historic data once when needed)"]
 
-   [nil "--push-people-from-file INPUT_FILE" "Command (debugging): Read data from file and push to Madek (insert, update, reactivate, but never inactivate)"]
-   [nil "--update-single-person INSTITUTIONAL_ID" "Command (debugging): Update single Madek person (update, reactivate, inactivate)"]
-   [nil "--get-people" "Command (debugging): Get people from ZAPI and write them to output"]
-   [nil "--get-study-classes" "Command (debugging): Get study classes from ZAPI and write them to output"]
+   [nil "--push-people-from-file INPUT_FILE" "Command (for testing): Read data from file and push to Madek (insert, update, reactivate, but never inactivate)"]
+   [nil "--update-single-person INSTITUTIONAL_ID" "Command (for testing): Update single Madek person (update, reactivate, inactivate)"]
+   [nil "--get-people" "Command (for testing): Get people from ZAPI and write them to output"]
+   [nil "--get-study-classes" "Command (for testing): Get study classes from ZAPI and write them to output"]
 
    [nil "--id-filter ID_FILTER" "Option for the `--get-*`commands: Get data filtered by a list of ids (comma-separated)"]
    [nil "--output-file OUTPUT_FILE" "Option for the `--get-*`commands: write json data to a file (otherwise to stdout)"]
 
-   [nil "--verbose" "Sets min log level to :debug (default is :info)"]
-   [nil "--prtg-url PRTG_URL" "When given, success and exceptions of `--sync-people` will be sent to PRTG (not for other commands because they are not intended to be automated)"]])
+   [nil "--verbose" "Option: Set log level to :debug (default is :info)"]
+   [nil "--prtg-url PRTG_URL" "Option: When given, success and exceptions of `--sync-people` will be sent to PRTG (not for other commands because they are not intended to be automated)"]])
 
 (defn- require-zapi-config [options]
   (let [zapi-url (or (:zapi-url options) (System/getenv "ZAPI_URL"))
