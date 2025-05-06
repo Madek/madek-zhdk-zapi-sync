@@ -5,7 +5,7 @@
    [madek.zapi-sync.utils :refer [batch-fetcher non-empty-string?]]
    [madek.zapi-sync.zapi.study-classes :as study-classes]
    [madek.zapi-sync.zapi.utils :refer [fetch]]
-   [taoensso.timbre :refer [debug]]))
+   [taoensso.timbre :refer [warn]]))
 
 (defonce fieldsets (join "," ["default" "basic" "affiliation" "study_base" "study_class"]))
 (defonce batch-size 100)
@@ -89,4 +89,5 @@
                                        (study-classes/fetch-many zapi-config)
                                        (map :short-name))]
         (update-study-class-names person study-class-names))
-      (do (debug id "Status" status) nil))))
+      (do (warn "Person" id "has HTTP Status" status "in ZAPI")
+          nil))))

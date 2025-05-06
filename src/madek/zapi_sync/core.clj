@@ -7,7 +7,8 @@
    [madek.zapi-sync.sync :as sync]
    [madek.zapi-sync.zapi.people :as zapi.people]
    [madek.zapi-sync.zapi.study-classes :as study-classes]
-   [taoensso.timbre :refer [info]]))
+   [madek.zapi-sync.prtg :as prtg]
+   [taoensso.timbre :refer [info error] :as logging]))
 
 (def INSTITUTION "zhdk.ch")
 
@@ -38,15 +39,18 @@
    [nil "--get-study-classes" "Command (debugging): Get study classes from ZAPI and write them to output"]
 
    [nil "--id-filter ID_FILTER" "Option for the `--get-*`commands: Get data filtered by a list of ids (comma-separated)"]
-   [nil "--output-file OUTPUT_FILE" "Option for the `--get-*`commands: write json data to a file (otherwise to stdout)"]])
+   [nil "--output-file OUTPUT_FILE" "Option for the `--get-*`commands: write json data to a file (otherwise to stdout)"]
+
+   [nil "--verbose" "Sets min log level to :debug (default is :info)"]
+   [nil "--prtg-url PRTG_URL" "When given, success and exceptions of `--sync-people` will be sent to PRTG (not for other commands because they are not intended to be automated)"]])
 
 (defn- require-zapi-config [options]
   (let [zapi-url (or (:zapi-url options) (System/getenv "ZAPI_URL"))
         zapi-username (or (:zapi-username options) (System/getenv "ZAPI_USERNAME"))]
     (cond
-      (nil? zapi-url)
+      (empty? zapi-url)
       (throw (Exception. "ZAPI_URL not found in options or env"))
-      (nil? zapi-username)
+      (empty? zapi-username)
       (throw (Exception. "ZAPI_USERNAME not found in options or env"))
       :else
       {:base-url zapi-url
@@ -56,9 +60,9 @@
   (let [madek-api-url (or (:madek-api-url options) (System/getenv "MADEK_API_URL"))
         madek-api-token (or (:madek-api-token options) (System/getenv "MADEK_API_TOKEN"))]
     (cond
-      (nil? madek-api-url)
+      (empty? madek-api-url)
       (throw (Exception. "MADEK_API_URL not found in options or env"))
-      (nil? madek-api-token)
+      (empty? madek-api-token)
       (throw (Exception. "MADEK_API_TOKEN not found in options or env"))
       :else
       {:base-url madek-api-url
@@ -69,55 +73,101 @@
     (data-file/run-write data filename)
     (pprint data)))
 
-(defn run [{:keys [sync-people sync-inactive-people push-people-from-file update-single-person get-people get-study-classes] :as options}]
-  (cond
-    sync-people
-    (let [zapi-config (require-zapi-config options)
-          madek-api-config (require-madek-api-config options)]
-      (sync/sync-people zapi-config madek-api-config INSTITUTION))
+(defn- log-success
+  ([results] (log-success results nil))
+  ([results prtg-url]
+   (let [stats (frequencies results)]
+     (info "Success" stats)
+     (when prtg-url
+       (info "Sending to PRTG...")
+       (prtg/send-success prtg-url stats)))))
 
-    sync-inactive-people
-    (let [zapi-config (require-zapi-config options)
-          madek-api-config (require-madek-api-config options)]
-      (sync/sync-inactive-people zapi-config madek-api-config INSTITUTION))
+(defn- log-error
+  ([ex] (log-error ex nil))
+  ([ex prtg-url]
+   (error ex)
+   (when prtg-url
+     (info "Sending to PRTG...")
+     (prtg/send-error prtg-url (.getMessage ex)))))
 
-    push-people-from-file
-    (let [data (data-file/run-read push-people-from-file)
-          madek-api-config (require-madek-api-config options)]
-      (sync/push-people madek-api-config data INSTITUTION))
+(defn run [{:keys [verbose prtg-url
+                   sync-people
+                   sync-inactive-people
+                   push-people-from-file
+                   update-single-person
+                   get-people
+                   get-study-classes] :as options}]
+  (if verbose
+    (logging/set-min-level! :debug)
+    (logging/set-min-level! :info))
+  (info "Madek ZAPI Sync...")
+  (let [zapi-config (require-zapi-config options)
+        madek-api-config (require-madek-api-config options)]
+    (cond
+      sync-people
+      (do (info "Command sync-people")
+          (-> (sync/sync-people zapi-config madek-api-config INSTITUTION)
+              log-success)
+          (info "Command sync-people done"))
 
-    update-single-person
-    (let [zapi-config (require-zapi-config options)
-          madek-api-config (require-madek-api-config options)]
-      (sync/update-single-person zapi-config madek-api-config INSTITUTION update-single-person))
+      sync-inactive-people
+      (do (info "Command sync-inactive-people")
+          (-> (sync/sync-inactive-people zapi-config madek-api-config INSTITUTION)
+              log-success)
+          (info "Command sync-inactive-people done"))
 
-    get-people
-    (let [zapi-config (require-zapi-config options)]
-      (->> (zapi.people/fetch-active-people zapi-config (select-keys options [:id-filter]))
-           (out (:output-file options))))
+      ;; commands for testing/debugging:
 
-    get-study-classes
-    (let [zapi-config (require-zapi-config options)]
-      (->> (study-classes/fetch-many zapi-config (select-keys options [:id-filter]))
-           (out (:output-file options))))
+      push-people-from-file
+      (let [prtg-url (or (:prtg-url options) (System/getenv "PRTG_URL"))] ;; TODO: move this PRTG shizzle to sync-people
+        (try
+          (let [data (data-file/run-read push-people-from-file)]
+            (info "Command push-people-from-file")
+            (-> (sync/push-people madek-api-config data INSTITUTION)
+                (log-success prtg-url))
+            (info "Command push-people-from-file done"))
+          (catch Exception e
+            (log-error e prtg-url)
+            (System/exit -1))))
 
-    :else (println "No command given. Check usage (--help)")))
+      update-single-person
+      (do (info "Command update-single-person")
+          (-> (sync/update-single-person zapi-config madek-api-config INSTITUTION update-single-person)
+              log-success)
+          (info "Command update-single-person done"))
+
+      get-people
+      (do (info "Command get-people")
+          (let [data (zapi.people/fetch-active-people zapi-config (select-keys options [:id-filter]))]
+            (out (:output-file options) data)
+            (info "N =" (count data))
+            (info "Command get-people done")))
+
+      get-study-classes
+      (do (info "Command get-study-classes")
+          (let [data (study-classes/fetch-many zapi-config (select-keys options [:id-filter]))]
+            (out (:output-file options) data)
+            (info "N =" (count data))
+            (info "Command get-study-classes done")))
+
+      :else (println "No command given. Check usage (--help)"))))
 
 (defn -main [& args]
-  (info "Madek ZAPI Sync...")
   (try
     (let [{:keys [options #_arguments errors summary]}
           (cli/parse-opts args cli-option-specs :in-order true)]
       (cond
         (seq errors)
-        (do (println "Check out usage (--help)")
-            (pprint errors))
+        (do
+          (println "Check out usage (--help)")
+          (pprint errors))
+
         (:help options)
         (println (usage summary))
+
         :else
         (run options))
       (System/exit 0))
     (catch Exception e
-      (do
-        (println e)
-        (System/exit -1)))))
+      (log-error e)
+      (System/exit -1))))

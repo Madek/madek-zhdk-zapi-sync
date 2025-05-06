@@ -2,7 +2,7 @@
   (:require
    [clj-http.client :as http-client]
    [madek.zapi-sync.utils :refer [non-empty-string?]]
-   [taoensso.timbre :refer [debug]]))
+   [taoensso.timbre :refer [debug info]]))
 
 ;; Reading from Madek API V2
 
@@ -38,7 +38,7 @@
 (defn post
   [{:keys [base-url auth-header]} data]
   (let [url (str base-url "admin/people")]
-    (debug "posting" url data)
+    (info "posting" url data)
     (-> (http-client/post url {:as :json
                                :content-type :json
                                :form-params data
@@ -48,7 +48,7 @@
   [{:keys [base-url auth-header]} madek-id data]
   (assert (non-empty-string? madek-id))
   (let [url (str base-url "admin/people/" madek-id)]
-    (debug "patching" url data)
+    (info "patching" url data)
     (-> (http-client/patch url {:as :json
                                 :content-type :json
                                 :form-params data
