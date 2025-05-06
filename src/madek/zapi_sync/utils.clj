@@ -1,4 +1,6 @@
-(ns madek.zapi-sync.utils)
+(ns madek.zapi-sync.utils
+  (:require
+   [clojure.string]))
 
 (defn batch-fetcher
   [fetch-page-fn get-total-fn batch-size]
@@ -17,3 +19,6 @@
 (defn now-iso-local []
   (.format java.time.format.DateTimeFormatter/ISO_OFFSET_DATE_TIME
            (java.time.OffsetDateTime/now)))
+
+(defn non-empty-string? [s]
+  (and (string? s) (not (clojure.string/blank? s))))

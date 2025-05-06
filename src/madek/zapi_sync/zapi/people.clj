@@ -1,9 +1,8 @@
 (ns madek.zapi-sync.zapi.people
   (:require
-   [clojure.pprint :refer [pprint]]
    [clj-http.client :as http-client]
    [clojure.string :refer [join]]
-   [madek.zapi-sync.utils :refer [batch-fetcher]]
+   [madek.zapi-sync.utils :refer [batch-fetcher non-empty-string?]]
    [madek.zapi-sync.zapi.study-classes :as study-classes]
    [madek.zapi-sync.zapi.utils :refer [fetch]]
    [taoensso.timbre :refer [debug]]))
@@ -77,6 +76,7 @@
 (defn fetch-person
   "Fetch person from ZAPI (be it inactive or active). Returns nil when status is not 200."
   [{:keys [base-url username] :as zapi-config} id]
+  (assert (non-empty-string? id))
   (let [url (str base-url
                  "person/" id "?"
                  (http-client/generate-query-string {:fieldsets fieldsets}))

@@ -4,8 +4,8 @@
    [clojure.string :refer [join]]
    [clojure.tools.cli :as cli]
    [madek.zapi-sync.data-file :as data-file]
-   [madek.zapi-sync.madek-api :as madek-api]
-   [madek.zapi-sync.zapi.people :as people]
+   [madek.zapi-sync.sync :as sync]
+   [madek.zapi-sync.zapi.people :as zapi.people]
    [madek.zapi-sync.zapi.study-classes :as study-classes]
    [taoensso.timbre :refer [info]]))
 
@@ -23,21 +23,22 @@
 
 (def cli-option-specs
   [["-h" "--help"]
-   [nil "--sync-people" "Command: Get people from ZAPI and sync them to Madek (see also --with-deactivation)"]
-   [nil "--with-deactivation" "- Use together with --sync-people to also deactivate people which are gone from ZAPI. Do NOT apply when incomplete ZAPI data is used (see --id-filter)"]
-   [nil "--get-people" "Command: Get people from ZAPI and write them to output"]
-   [nil "--get-study-classes" "Command: Get study classes from ZAPI and write them to output (for debugging)"]
-   [nil "--history-sync" "Command: Sync infos from ZAPI for inactive people present in Madek DB. Requires special permissions in ZAPI!"]
 
    [nil "--zapi-url ZAPI_URL" "Config: Base URL of ZAPI with trailing slash. Defaults to env var `ZAPI_URL`"]
    [nil "--zapi-username ZAPI_USERNAME" "Config: ZAPI username. Defaults to env var `ZAPI_USERNAME`"]
    [nil "--madek-api-url MADEK_API_URL" "Config: Base URL of Madek API V2 with trailing slash. Defaults to env var `MADEK_API_URL`"]
    [nil "--madek-api-token MADEK_API_TOKEN" "Config: API Token for Madek API V2. Defaults to env var `MADEK_API_TOKEN`"]
-   #_[nil "--institution INSTITUTION" "Config: Institution (builds the unique identifier together with `institutional_id` coming from ZAPI)"]
 
-   [nil "--id-filter ID_FILTER" "Option: Get data from ZAPI filtered by a list of ids (comma-separated)"]
-   [nil "--output-file OUTPUT_FILE" "Option: With --get-people and --get-study-classes, write json data to a file (otherwise to stdout)"]
-   [nil "--input-file INPUT_FILE" "Option: With --sync-people, skip querying ZAPI and use json data from a file instead"]])
+   [nil "--sync-people" "Command: Get active people from ZAPI and sync them to Madek. Inactivate people when not active in ZAPI anymore"]
+   [nil "--sync-inactive-people" "Command: Update people which are already inactive (to pull historic data once when needed)"]
+
+   [nil "--push-people-from-file INPUT_FILE" "Command (debugging): Read data from file and push to Madek (insert, update, reactivate, but never inactivate)"]
+   [nil "--update-single-person INSTITUTIONAL_ID" "Command (debugging): Update single Madek person (update, reactivate, inactivate)"]
+   [nil "--get-people" "Command (debugging): Get people from ZAPI and write them to output"]
+   [nil "--get-study-classes" "Command (debugging): Get study classes from ZAPI and write them to output"]
+
+   [nil "--id-filter ID_FILTER" "Option for the `--get-*`commands: Get data filtered by a list of ids (comma-separated)"]
+   [nil "--output-file OUTPUT_FILE" "Option for the `--get-*`commands: write json data to a file (otherwise to stdout)"]])
 
 (defn- require-zapi-config [options]
   (let [zapi-url (or (:zapi-url options) (System/getenv "ZAPI_URL"))
@@ -63,50 +64,44 @@
       {:base-url madek-api-url
        :auth-header (str "token " madek-api-token)})))
 
-#_(defn- require-institution [{:keys [institution]}]
-    (if (empty? institution)
-      (throw (Exception. "INSTITUTION not present in options (--institution <INSTITUTION>)"))
-      institution))
-
 (defn- out [filename data]
   (if filename
     (data-file/run-write data filename)
     (pprint data)))
 
-(defn- run-sync-people [options]
-  (let [zapi-config (require-zapi-config options)
-        zapi-people (if-let [input-file (:input-file options)]
-                      (data-file/run-read input-file)
-                      (people/fetch-active-people
-                       zapi-config
-                       (select-keys options [:id-filter])))
-        get-zapi-person (fn [id] (people/fetch-person zapi-config id))
-        madek-api-config (require-madek-api-config options)]
-    (madek-api/sync-task madek-api-config INSTITUTION zapi-people)
-    (if (:with-deactivation options)
-      (madek-api/deactivation-task madek-api-config INSTITUTION zapi-people get-zapi-person)
-      (println "NOTE: Sync is not complete, deactivation task was skipped! See `--with-deactivation` option"))))
+(defn run [{:keys [sync-people sync-inactive-people push-people-from-file update-single-person get-people get-study-classes] :as options}]
+  (cond
+    sync-people
+    (let [zapi-config (require-zapi-config options)
+          madek-api-config (require-madek-api-config options)]
+      (sync/sync-people zapi-config madek-api-config INSTITUTION))
 
-(defn- run-get-people [options]
-  (->> (people/fetch-active-people (require-zapi-config options) (select-keys options [:id-filter]))
-       (out (:output-file options))))
+    sync-inactive-people
+    (let [zapi-config (require-zapi-config options)
+          madek-api-config (require-madek-api-config options)]
+      (sync/sync-inactive-people zapi-config madek-api-config INSTITUTION))
 
-(defn- run-get-study-classes [options]
-  (->> (study-classes/fetch-many (require-zapi-config options) (select-keys options [:id-filter]))
-       (out (:output-file options))))
+    push-people-from-file
+    (let [data (data-file/run-read push-people-from-file)
+          madek-api-config (require-madek-api-config options)]
+      (sync/push-people madek-api-config data INSTITUTION))
 
-(defn- run-history-sync [options]
-  (let [mapi-config (require-madek-api-config options)
-        zapi-config (require-zapi-config options)
-        get-zapi-person (fn [id] (people/fetch-person zapi-config id))]
-    (madek-api/history-sync-task mapi-config INSTITUTION get-zapi-person)))
+    update-single-person
+    (let [zapi-config (require-zapi-config options)
+          madek-api-config (require-madek-api-config options)]
+      (sync/update-single-person zapi-config madek-api-config INSTITUTION update-single-person))
 
-(defn run [{:keys [get-people get-study-classes sync-people history-sync] :as options}]
-  (cond get-people (run-get-people options)
-        get-study-classes (run-get-study-classes options)
-        sync-people (run-sync-people options)
-        history-sync (run-history-sync options)
-        :else (println "No command given. Check usage (--help)")))
+    get-people
+    (let [zapi-config (require-zapi-config options)]
+      (->> (zapi.people/fetch-active-people zapi-config (select-keys options [:id-filter]))
+           (out (:output-file options))))
+
+    get-study-classes
+    (let [zapi-config (require-zapi-config options)]
+      (->> (study-classes/fetch-many zapi-config (select-keys options [:id-filter]))
+           (out (:output-file options))))
+
+    :else (println "No command given. Check usage (--help)")))
 
 (defn -main [& args]
   (info "Madek ZAPI Sync...")
