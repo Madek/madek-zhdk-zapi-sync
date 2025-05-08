@@ -38,11 +38,10 @@
    [nil "--get-people" "Command (for testing): Get people from ZAPI and write them to output"]
    [nil "--get-study-classes" "Command (for testing): Get study classes from ZAPI and write them to output"]
 
+   [nil "--prtg-url PRTG_URL" "Option for the `--sync-people` command. Success or error will be sent to PRTG. Defaults to env var `PRTG_URL`"]
    [nil "--id-filter ID_FILTER" "Option for the `--get-*`commands: Get data filtered by a list of ids (comma-separated)"]
    [nil "--output-file OUTPUT_FILE" "Option for the `--get-*`commands: write json data to a file (otherwise to stdout)"]
-
-   [nil "--verbose" "Option: Set log level to :debug (default is :info)"]
-   [nil "--prtg-url PRTG_URL" "Option: When given, success and exceptions of `--sync-people` will be sent to PRTG (not for other commands because they are not intended to be automated)"]])
+   [nil "--verbose" "General option: Set log level to :debug (default is :info)"]])
 
 (defn- require-zapi-config [options]
   (let [zapi-url (or (:zapi-url options) (System/getenv "ZAPI_URL"))
@@ -90,24 +89,29 @@
      (info "Sending to PRTG...")
      (prtg/send-error prtg-url (.getMessage ex)))))
 
-(defn run [{:keys [verbose prtg-url
+(defn run [{:keys [verbose
                    sync-people
                    sync-inactive-people
                    push-people-from-file
                    update-single-person
                    get-people
                    get-study-classes] :as options}]
+
   (if verbose
     (logging/set-min-level! :debug)
     (logging/set-min-level! :info))
+
   (info "Madek ZAPI Sync...")
+
   (let [zapi-config (require-zapi-config options)
-        madek-api-config (require-madek-api-config options)]
+        madek-api-config (require-madek-api-config options)
+        prtg-url (or (:prtg-url options) (System/getenv "PRTG_URL"))
+        prtg-catcher #(try (%) (catch Exception e (log-error e prtg-url) (System/exit -1)))]
     (cond
       sync-people
       (do (info "Command sync-people")
-          (-> (sync/sync-people zapi-config madek-api-config INSTITUTION)
-              log-success)
+          (prtg-catcher #(-> (sync/sync-people zapi-config madek-api-config INSTITUTION)
+                             (log-success prtg-url)))
           (info "Command sync-people done"))
 
       sync-inactive-people
@@ -119,16 +123,11 @@
       ;; commands for testing/debugging:
 
       push-people-from-file
-      (let [prtg-url (or (:prtg-url options) (System/getenv "PRTG_URL"))] ;; TODO: move this PRTG shizzle to sync-people
-        (try
+      (do (info "Command push-people-from-file")
           (let [data (data-file/run-read push-people-from-file)]
-            (info "Command push-people-from-file")
             (-> (sync/push-people madek-api-config data INSTITUTION)
-                (log-success prtg-url))
-            (info "Command push-people-from-file done"))
-          (catch Exception e
-            (log-error e prtg-url)
-            (System/exit -1))))
+                (log-success prtg-url)))
+          (info "Command push-people-from-file done"))
 
       update-single-person
       (do (info "Command update-single-person")

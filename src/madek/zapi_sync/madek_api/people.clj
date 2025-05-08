@@ -1,15 +1,15 @@
 (ns madek.zapi-sync.madek-api.people
   (:require
    [clj-http.client :as http-client]
-   [madek.zapi-sync.utils :refer [non-empty-string?]]
+   [madek.zapi-sync.utils :refer [non-blank-string?]]
    [taoensso.timbre :refer [debug info]]))
 
 ;; Reading from Madek API V2
 
 (defn fetch-one-by-institutional-id
   [{:keys [base-url auth-header]} institution institutional-id]
-  (assert (non-empty-string? institution))
-  (assert (non-empty-string? institutional-id))
+  (assert (non-blank-string? institution))
+  (assert (non-blank-string? institutional-id))
   (let [url (str base-url "admin/people" "?"
                  (http-client/generate-query-string
                   {:institution institution
@@ -21,7 +21,7 @@
 
 (defn fetch-all-of-institution
   [{:keys [base-url auth-header]} {:keys [institution active?]}]
-  (assert (non-empty-string? institution))
+  (assert (non-blank-string? institution))
   (let [url (str base-url
                  "admin/people" "?"
                  (http-client/generate-query-string {:subtype "Person" :institution institution}))]
@@ -31,7 +31,7 @@
          :body :people
          (filter :institutional_id)
          (filter (fn [p] (or (nil? active?)
-                             (= active? (-> p :institutional_directory_inactive_since some?))))))))
+                             (= active? (-> p :institutional_directory_inactive_since nil?))))))))
 
 ;; Writing to Madek API V2
 
@@ -46,7 +46,7 @@
 
 (defn patch
   [{:keys [base-url auth-header]} madek-id data]
-  (assert (non-empty-string? madek-id))
+  (assert (non-blank-string? madek-id))
   (let [url (str base-url "admin/people/" madek-id)]
     (info "patching" url data)
     (-> (http-client/patch url {:as :json

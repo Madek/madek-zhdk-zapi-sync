@@ -56,12 +56,15 @@
 (defn sync-people
   "Insert or update (potentially re-activate) people which are active in ZAPI, and inactivate those who are not"
   [zapi-config madek-api-config institution]
-  (let [zapi-people (zapi.people/fetch-active-people
-                     zapi-config
-                     {})
-        madek-people (madek-api.people/fetch-all-of-institution
-                      madek-api-config
-                      {:institution institution :active? true})]
+  (let [zapi-people (do (info "Fetching ZAPI data...")
+                        (zapi.people/fetch-active-people
+                         zapi-config
+                         {}))
+        madek-people (do (info "Fetching Madek data...")
+                         (madek-api.people/fetch-all-of-institution
+                          madek-api-config
+                          {:institution institution :active? true}))]
+    (info "Syncing to Madek...")
     (concat
      (->> zapi-people
           (map #(push-person madek-api-config institution %)))
@@ -72,11 +75,13 @@
           (map #(pull-person zapi-config madek-api-config %))))))
 
 (defn sync-inactive-people
-  "Update people which are inactive in Madek and presumably also in ZAPI (meant to pull historic data once when needed)"
+  "Update people which are inactive in Madek and presumably also in ZAPI (intended to pull historical data once when needed)"
   [zapi-config madek-api-config institution]
-  (let [madek-people (madek-api.people/fetch-all-of-institution
-                      madek-api-config
-                      {:institution institution :active? false})]
+  (let [madek-people (do (info "Fetching Madek inactive people data...")
+                         (madek-api.people/fetch-all-of-institution
+                          madek-api-config
+                          {:institution institution :active? false}))]
+    (info "Update inactive people...")
     (->> madek-people
          (map #(pull-person zapi-config madek-api-config %)))))
 

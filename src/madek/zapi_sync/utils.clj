@@ -20,5 +20,5 @@
   (.format java.time.format.DateTimeFormatter/ISO_OFFSET_DATE_TIME
            (java.time.OffsetDateTime/now)))
 
-(defn non-empty-string? [s]
+(defn non-blank-string? [s]
   (and (string? s) (not (clojure.string/blank? s))))
