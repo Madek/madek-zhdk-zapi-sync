@@ -10,7 +10,7 @@
   [{:keys [base-url auth-header]} institution institutional-id]
   (assert (non-blank-string? institution))
   (assert (non-blank-string? institutional-id))
-  (let [url (str base-url "admin/people" "?"
+  (let [url (str base-url "admin/people/" "?"
                  (http-client/generate-query-string
                   {:institution institution
                    :institutional_id institutional-id}))]
@@ -23,7 +23,7 @@
   [{:keys [base-url auth-header]} {:keys [institution active?]}]
   (assert (non-blank-string? institution))
   (let [url (str base-url
-                 "admin/people" "?"
+                 "admin/people/" "?"
                  (http-client/generate-query-string {:subtype "Person" :institution institution}))]
     (debug "fetching" url)
     (->> (http-client/get url {:as :json
@@ -37,7 +37,7 @@
 
 (defn post
   [{:keys [base-url auth-header]} data]
-  (let [url (str base-url "admin/people")]
+  (let [url (str base-url "admin/people/")]
     (info "posting" url data)
     (-> (http-client/post url {:as :json
                                :content-type :json

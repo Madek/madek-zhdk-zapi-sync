@@ -31,7 +31,7 @@
    [nil "--madek-api-token MADEK_API_TOKEN" "Config: API Token for Madek API V2. Defaults to env var `MADEK_API_TOKEN`"]
 
    [nil "--sync-people" "Command: Get active people from ZAPI and sync them to Madek. Inactivate people when not active in ZAPI anymore"]
-   [nil "--sync-inactive-people" "Command: Update people which are already inactive (to pull historic data once when needed)"]
+   [nil "--sync-inactive-people" "Command: Update people which are already inactive (use to pull historic data once when needed)"]
 
    [nil "--push-people-from-file INPUT_FILE" "Command (for testing): Read data from file and push to Madek (insert, update, reactivate, but never inactivate)"]
    [nil "--update-single-person INSTITUTIONAL_ID" "Command (for testing): Update single Madek person (update, reactivate, inactivate)"]
