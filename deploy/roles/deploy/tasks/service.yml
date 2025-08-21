@@ -1,0 +1,62 @@
+# config template
+
+- name: create madek-zapi-sync config dir
+  file:
+    path: /etc/madek
+    state: directory
+    mode: '0755'
+
+- name: create config file
+  template:
+    src: config.env
+    dest: /etc/madek/madek_zhdk_zapi_sync.conf
+    mode: 0640
+    group: '{{madek_zhdk_zapi_sync_group}}'
+
+
+# service 
+
+- name: setup service file {{madek_zhdk_zapi_sync_name}}.service
+  template:
+    src: madek-zhdk-zapi-sync.service
+    dest: /etc/systemd/system/{{madek_zhdk_zapi_sync_name}}.service
+    mode: 0640
+
+- command: systemctl daemon-reload
+  changed_when: false
+  name: reload systemctl
+
+- name: enable the service
+  service:
+    name: '{{madek_zhdk_zapi_sync_name}}.service'
+    enabled: yes
+
+
+# timer
+
+- name: install the sync timer {{madek_zhdk_zapi_sync_name}}.timer
+  template:
+    src: madek-zhdk-zapi-sync.timer
+    dest: /etc/systemd/system/{{madek_zhdk_zapi_sync_name}}.timer
+    mode: 0644
+
+- name: reload systemctl
+  command: systemctl daemon-reload
+  changed_when: false
+
+- name: enable the sync timer {{madek_zhdk_zapi_sync_name}}.timer
+  service:
+    name: '{{madek_zhdk_zapi_sync_name}}.timer'
+    enabled: yes
+    state: started
+
+# start service optinally
+
+- name: start {{madek_zhdk_zapi_sync_name}}.service
+  when: run_service_on_deploy
+  service:
+    name: '{{madek_zhdk_zapi_sync_name}}.service'
+    state: started
+    enabled: yes
+  when: run_service_on_deploy
+

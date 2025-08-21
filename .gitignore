@@ -1,1 +1,17 @@
+*.class
+*.log
+/.cider-ci_private
+/.cpcache
+/.DS_Store
+/.lein-*
+/.nrepl-port
+/.venv
+/.venv-*
+/checkouts
+/classes
+/cpcache/
+/target
 /tmp
+madek-zhdk-zapi-sync.jar
+pom.xml
+pom.xml.asc

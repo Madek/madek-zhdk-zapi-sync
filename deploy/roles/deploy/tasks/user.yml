@@ -1,0 +1,13 @@
+- name: create madek-sync user
+  user:
+    name: '{{madek_zhdk_zapi_sync_user}}'
+    system: yes
+
+- name: create deploy target dir(s)
+  file:
+    path: "{{madek_zhdk_zapi_sync_root_dir}}"
+    state: directory
+    recurse: yes
+    owner: '{{madek_zhdk_zapi_sync_user}}'
+    group: root
+    mode: 0750

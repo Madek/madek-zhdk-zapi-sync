@@ -2,11 +2,20 @@
 
 Fetches people from ZAPI and pushes them to Madek API V2.
 
+
+## Deployment
+
+e.g. `./bin/deploy-to-test`, see content for details.
+
+
+### Uninstall 
+
+e.g. `./bin/deploy-to-test -e "uninstall=true"`
+
+
 ## Usage
 
-### Automated sync in production 
-
-Schedule this: 
+### Example
 
 ```
 clojure -M -m madek.zapi-sync.core --sync-people

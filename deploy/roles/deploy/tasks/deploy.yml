@@ -1,0 +1,11 @@
+- include_tasks: build.yml
+  tags: build
+
+- include_tasks: user.yml
+  tags: user
+
+- include_tasks: transfer-jar.yml
+  tags: transfer-jar
+
+- include_tasks: service.yml
+  tags: service

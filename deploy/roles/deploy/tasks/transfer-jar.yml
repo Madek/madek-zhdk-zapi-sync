@@ -1,0 +1,6 @@
+- name: tansfer jar
+  copy:
+    src: '{{role_path}}/../../../{{uberjar_name}}'
+    dest: '{{uberjar_path}}'
+    owner: '{{madek_zhdk_zapi_sync_user}}'
+    group: root

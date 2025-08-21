@@ -1,0 +1,38 @@
+jobs:
+
+  uberjar:
+    name: Build uberjar
+    run_when:
+      on any branch:
+        type: branch
+        include_match: ^.*$
+    context:
+      tasks:
+        build:
+          traits:
+            asdf: true
+          scripts:
+            uberjar:
+              body: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                git submodule update --init --recursive --force
+                ./bin/build
+
+  deploy_environment:
+    name: Check working deploy environment
+    run_when:
+      on any branch:
+        type: branch
+        include_match: ^.*$
+    context:
+      tasks:
+        build:
+          traits:
+            asdf: true
+          scripts:
+            uberjar:
+              body: |
+                #!/usr/bin/env bash
+                set -euo pipefail
+                ./bin/ansible --version | grep -E '^ansible \[core 2\.18\.8\]'

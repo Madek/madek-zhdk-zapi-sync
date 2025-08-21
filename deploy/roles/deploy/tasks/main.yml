@@ -1,0 +1,7 @@
+- include_tasks: deploy.yml
+  when: not uninstall | bool
+  tags: deploy
+
+- include_tasks: uninstall.yml
+  when: uninstall | bool
+  tags: uninstall

@@ -1,0 +1,8 @@
+uninstall: false
+run_service_on_deploy: false
+madek_zhdk_zapi_sync_name: madek-zhdk-zapi-sync
+madek_zhdk_zapi_sync_root_dir: /{{madek_zhdk_zapi_sync_name}}
+madek_zhdk_zapi_sync_user: '{{madek_zhdk_zapi_sync_name}}'
+madek_zhdk_zapi_sync_group: '{{madek_zhdk_zapi_sync_name}}'
+uberjar_name: 'madek-zhdk-zapi-sync.jar'
+uberjar_path: '{{madek_zhdk_zapi_sync_root_dir}}/{{uberjar_name}}'

@@ -1,0 +1,8 @@
+- name: build uberjar
+  delegate_to: localhost
+  shell: |
+    #!/bin/bash
+    set -euxo
+    export PROJECT_DIR='{{role_path}}/../../..'
+    cd $PROJECT_DIR
+    ./bin/build

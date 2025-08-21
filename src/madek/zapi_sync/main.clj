@@ -1,4 +1,5 @@
-(ns madek.zapi-sync.core
+(ns madek.zapi-sync.main
+  (:gen-class)
   (:require
    [clojure.pprint :refer [pprint]]
    [clojure.string :refer [join]]

@@ -1,0 +1,17 @@
+[Unit]
+Description=Madek ZHdK ZAPI Sync Service
+After=syslog.target
+After=network.target
+
+BindsTo=madek-api.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=false
+WorkingDirectory={{madek_zhdk_zapi_sync_root_dir}}
+User={{madek_zhdk_zapi_sync_user}}
+EnvironmentFile=/etc/madek/madek_zhdk_zapi_sync.conf
+ExecStart=/usr/bin/java "-Xmx1014m" "-jar" "{{uberjar_path}}" "--sync-people"
+
+[Install]
+WantedBy=multi-user.target
