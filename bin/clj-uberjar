@@ -1,9 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
+
 PROJECT_DIR="$(cd -- "$(dirname "${BASH_SOURCE}")" ; cd .. > /dev/null 2>&1 && pwd -P)"
+PROJECT_NAME='madek-zhdk-zapi-sync'
+JAR_NAME="${PROJECT_NAME}.jar"
+TMP_DIR="${PROJECT_DIR}/tmp"
+
+mkdir -p $TMP_DIR
+
 cd $PROJECT_DIR
+./bin/env/java-setup
+./bin/env/clojure-setup
 
-${PROJECT_DIR}/bin/env/java-setup
-${PROJECT_DIR}/bin/env/clojure-setup
+function build {
+  clojure -T:build uber
+}
 
-clojure -T:build uber
+rm -f $PROJECT_DIR/$JAR_NAME
+
+if [[ -n $(git status -s) ]]; then
+  echo "WARNING: project is dirty, rebuilding regular jar"
+  build
+else
+  DIGEST="$(git -C "$PROJECT_DIR" log -n 1 HEAD --pretty=%T)"
+  CACHED_JAR="${TMP_DIR}/${PROJECT_NAME}_${DIGEST}.jar"
+  if [[ -e  "$CACHED_JAR" ]]; then
+    echo "using cached jar"
+    touch $CACHED_JAR
+  else
+    echo "building jar"
+    build
+    mv $PROJECT_DIR/$JAR_NAME $CACHED_JAR
+  fi
+  ln -s "$CACHED_JAR" "$PROJECT_DIR/$JAR_NAME"
+fi
+
+# cleanup old jars
+find $PROJECT_DIR/tmp -type f -name "${PROJECT_NAME}_*.jar" -mtime +7 -exec rm -f {} \;

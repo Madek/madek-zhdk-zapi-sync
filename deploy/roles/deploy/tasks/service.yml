@@ -59,4 +59,6 @@
     state: started
     enabled: yes
   when: run_service_on_deploy
+  async: 3600
+  poll: 5
 

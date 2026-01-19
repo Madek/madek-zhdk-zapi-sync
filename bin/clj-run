@@ -1,11 +1,9 @@
 #!/usr/bin/env bash
-set -euo
+set -euo pipefail
 PROJECT_DIR="$(cd -- "$(dirname "${BASH_SOURCE}")" ; cd .. > /dev/null 2>&1 && pwd -P)"
 cd $PROJECT_DIR
-
-${PROJECT_DIR}/bin/env/java-setup
-${PROJECT_DIR}/bin/env/clojure-setup
-
-clj -M -m madek.sync.main "$@"
-
-# vi: ft=sh
+# TODO: setup for mise
+# ./bin/env/java-setup
+# ./bin/env/clojure-setup
+rm -f resources/version.yml
+clj -m madek.sync.main "$@"
