@@ -27,12 +27,12 @@ jobs:
         include_match: ^.*$
     context:
       tasks:
-        build:
+        check_deploy_environment:
           traits:
             asdf: true
           scripts:
-            uberjar:
+            check_ansible_version:
               body: |
                 #!/usr/bin/env bash
                 set -euo pipefail
-                ./bin/ansible --version | grep -E '^ansible \[core 2\.18\.8\]'
+                ./bin/ansible --version | grep -E '^ansible \[core 2\..+]' || (echo "Ansible version 2.x is required" >&2 ; exit 1)

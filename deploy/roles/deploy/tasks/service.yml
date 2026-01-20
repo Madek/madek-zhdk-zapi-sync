@@ -53,12 +53,11 @@
 # start service optinally
 
 - name: start {{madek_zhdk_zapi_sync_name}}.service
-  when: run_service_on_deploy
   service:
     name: '{{madek_zhdk_zapi_sync_name}}.service'
     state: started
     enabled: yes
-  when: run_service_on_deploy
+  when: run_service_on_deploy | bool
   async: 3600
   poll: 5
 

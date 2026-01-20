@@ -3,11 +3,11 @@ Description=Madek ZHdK ZAPI Sync Service
 After=syslog.target
 After=network.target
 
-BindsTo=madek-api.service
-
 [Service]
 Type=oneshot
 RemainAfterExit=false
+RestartSec=300
+StartLimitBurst=2
 WorkingDirectory={{madek_zhdk_zapi_sync_root_dir}}
 User={{madek_zhdk_zapi_sync_user}}
 EnvironmentFile=/etc/madek/madek_zhdk_zapi_sync.conf
